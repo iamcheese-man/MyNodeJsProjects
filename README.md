@@ -1,1 +1,4 @@
-i code with comments like "/////////////" fuk off im not a vibcoder
+### FAQ
+
+1- wHy aRe aI lIke cOmmEnTs ThEre?
+ - No, thats my preference fuk off
