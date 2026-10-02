@@ -1,17 +1,34 @@
 const net = require('net')
+const express = require('express')
 const FramedSocket = require('framed-socket')
-const app = net.createServer()
+const cors = require('cors')
+const tcpApp = net.createServer()
+const app = express()
 const fs = require('fs')
 const bannedIPs = new Set()
 const clientSockets = new Set()
-const FilePaths = {"BloodMoon.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\ApocalypseSTrack.mp3", "TribunalsTrialsAndExecutions.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TribunalSTrack.mp3", "TouchToneTelephone.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TouchToneTelephoneLD.mp3"}
+const FilePaths = {
+    "BloodMoon.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\ApocalypseSTrack.mp3",
+    "TribunalsTrialsAndExecutions.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TribunalSTrack.mp3",
+    "TouchToneTelephone.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TouchToneTelephoneLD.mp3"
+}
 const fileNames = Object.keys(FilePaths)
-const password = "password123"
+const password = "UHOJS"
 const clientActions = ['RequestFile', 'RequestFileList', 'Quit', 'RequestFileStats', 'ShutdownServer']
 
+app.use(cors())
+app.use((req,res,next) => {
+    const IP = IPv6ToIPv4(req.socket.remoteAddress)
+    console.log(`HTTP CLIENT HAS REQUESTED: ${req.method} ${req.path} FROM IP ${IP} `)
+    if (acceptingConnections === false) {
+        return res.json({"error":"The server isn't accepting connections right now."})
+    } 
+    next()
+})
 let acceptingConnections = true;
 let shuttingDown = false;
-app.on('connection', async (rSocket) => {
+
+tcpApp.on('connection', async (rSocket) => {
     const socket = new FramedSocket(rSocket)
     const IP = IPv6ToIPv4(socket.remoteAddress)
     
@@ -87,8 +104,40 @@ app.on('connection', async (rSocket) => {
     })
 })
 
-app.listen(81, '0.0.0.0', () => {
-    console.log('Server is running')
+app.get('/', (req,res) => {
+    res.send(`<h1>Current paths: /, /api, /api/requestfile, /api/requestfile, /api/requestfilestats, /api/requestfilelist</h1>`)
+})
+app.get('/api', (req,res) => {
+    res.json({
+        "CurrentAPIs":['requestfile', 'requestfilestats', 'requestfilelist']
+    })
+})
+app.get('/api/requestfile/:filename', (req,res) => {
+    const requestedFile = req.params.filename
+    if (!requestedFile || !fileNames.includes(requestedFile)) {
+        return res.status(404).json({"error":"Unknown file."})
+    }
+    res.sendFile(FilePaths[requestedFile])
+})
+
+app.get('/api/requestfilestats/:filename', (req,res) => {
+    const reqStatForFile = req.params.filename
+    if (!reqStatForFile || !fileNames.includes(reqStatForFile)) {
+        return res.status(404).json({"error":"Unknown file."})
+    }
+    const fileStats = fs.statSync(FilePaths[reqStatForFile])
+    res.json({"info":"success", "fileName":reqStatForFile, "fileSize":fileStats.size})
+})
+
+app.get('/api/requestfilelist', (req,res) => {
+    res.json({"info":"success", "fileList":fileNames})
+})
+
+app.listen(80, '0.0.0.0', () => {
+    console.log('HTTP Server is running')
+})
+tcpApp.listen(81, '0.0.0.0', () => {
+    console.log('TCP Server is running')
 })
 
 
