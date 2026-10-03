@@ -12,6 +12,7 @@ const FilePaths = {
     "BloodMoon.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\ApocalypseSTrack.mp3",
     "TribunalsTrialsAndExecutions.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TribunalSTrack.mp3",
     "TouchToneTelephone.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TouchToneTelephoneLD.mp3"
+    // if you want tto use the server yourself, then replace the paths with your own filed.
 }
 const fileNames = Object.keys(FilePaths)
 const password = "UHOJS"
