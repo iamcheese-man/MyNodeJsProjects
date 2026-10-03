@@ -11,8 +11,9 @@ const clientSockets = new Map()
 const FilePaths = {
     "BloodMoon.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\ApocalypseSTrack.mp3",
     "TribunalsTrialsAndExecutions.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TribunalSTrack.mp3",
-    "TouchToneTelephone.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TouchToneTelephoneLD.mp3"
-    // if you want tto use the server yourself, then replace the paths with your own files.
+    "TouchToneTelephone.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TouchToneTelephoneLD.mp3",
+    "CourtSession.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\CourtSession.mp3"
+    // USE your OWN files if you want to copy this server. 
 }
 const fileNames = Object.keys(FilePaths)
 const password = "UHOJS"
@@ -24,7 +25,7 @@ app.use((req,res,next) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
     console.log(`HTTP CLIENT HAS REQUESTED: ${req.method} ${req.path} FROM IP ${IP} `)
     if (acceptingConnections === false) {
-        return res.json({"error":"The server isn't accepting connections right now."})
+        return res.status(403).json({"error":"The server isn't accepting connections right now."})
     } 
     next()
 })
@@ -42,8 +43,21 @@ tcpApp.on('connection', async (rSocket) => {
     if (acceptingConnections === false) {
         return socket.end(`SERVER\nThe server isn't accepting anymore connections.`)
     }
+
+    socket.once('rawData', (rdata) => {
+        if (rdata.length < 4) {
+            return socket.end(`SERVER\nMalformed message.`)
+        }
+        const LengthHeader = rdata.readUInt32BE(0)
+        if (LengthHeader === 0 || LengthHeader > 50) {
+            return socket.end(`SERVER\nMalformed length header.`)
+        }
+    })
+    
+
     socket.write(`SERVER\nWelcome to FileArchive.\r\n\r\nAvailable Files: ${fileNames}`)
     clientSockets.set(socket, "tcp")
+
     socket.on('message', async (bMsg) => {
         const msg = bMsg.toString().replaceAll('\\n', '\n').replaceAll('\\r', '\r')
         if (!msg.startsWith('CLIENT\n')) {
@@ -130,12 +144,12 @@ app.get('/api/requestfilelist', (req,res) => {
 app.ws('/', (ws,req) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
     if (bannedIPs.has(IP)) {
-        return ws.close(`SERVER;You are banned.`)
+        return ws.close(1008, `SERVER;You are banned.`)
     }
     if (acceptingConnections === false) {
-        return ws.end(`SERVER;The server isn't accepting anymore connections.`)
+        return ws.close(1013, `SERVER;The server isn't accepting anymore connections.`)
     }
-    ws.send(`SERVER;Welcome to FileArchive;Available Files: ${fileNames}`)
+    ws.send(`SERVER;Welcome to FileArchive;Available Files:${fileNames}`)
     clientSockets.set(ws, "ws")
     ws.on('message', async (bMsg) => {
         const msg = bMsg.toString()
@@ -190,11 +204,12 @@ app.ws('/', (ws,req) => {
         clientSockets.delete(ws)
     })
 })
+
 app.listen(80, '0.0.0.0', () => {
-    console.log('HTTP Server is running')
-});
-tcpApp.listen(81, '0.0.0.0', () => {
-    console.log('TCP Server is running')
+    console.log('HTTP/WebSocket Server successfully started, running TCP server...')
+    tcpApp.listen(81, '0.0.0.0', () => {
+        console.log('TCP Server successfully started. All systems operational.')
+    });
 });
 
 
@@ -207,7 +222,7 @@ function handleDiffClients(socket, action) {
     if (action === "shutdown") {
         for (const [clientSocket, Sockettype] of clientSockets) {
             if (Sockettype === "ws") {
-                clientSocket.close()
+                clientSocket.close(1001)
             } else if (Sockettype === "tcp") {
                 clientSocket.end()
             }
@@ -215,13 +230,13 @@ function handleDiffClients(socket, action) {
     } else if (action === "broadcastShutdown") {
         for (const [clientSocket, Sockettype] of clientSockets) {
             if (clientSocket !== socket && Sockettype === "ws") {
-                clientSocket.send(`SERVER;All clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop transferring files.`)
+                clientSocket.send(`SERVER;All clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop requesting files.`)
             } else if (clientSocket === socket && Sockettype === "tcp") {
                 clientSocket.write(`SERVER\nSuccessfully initiated server shutdown.`)
             } else if (clientSocket === socket && Sockettype === "ws") {
                 clientSocket.send(`SERVER;Successfully initiated server shutdown.`)
             } else if (clientSocket !== socket && Sockettype === "tcp") {
-                clientSocket.write(`SERVER\nAll clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop transferring files.`)
+                clientSocket.write(`SERVER\nAll clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop requesting files.`)
             }
         }
     }
