@@ -2,20 +2,19 @@ const net = require('net')
 const express = require('express')
 const expressWS = require('express-ws')
 const FramedSocket = require('framed-socket')
+const path = require('path')
 const cors = require('cors')
 const tcpApp = net.createServer()
 const app = express()
 const fs = require('fs')
 const bannedIPs = new Set()
 const clientSockets = new Map()
-const FilePaths = {
-    "BloodMoon.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\ApocalypseSTrack.mp3",
-    "TribunalsTrialsAndExecutions.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TribunalSTrack.mp3",
-    "TouchToneTelephone.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TouchToneTelephoneLD.mp3",
-    "CourtSession.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\CourtSession.mp3"
-    // USE your OWN files if you want to copy this server. 
-}
-const fileNames = Object.keys(FilePaths)
+const MainDirectory = 'C:\\Users\\YEP\\OneDrive\\Documents\\audio'
+let fileNames = fs.readdirSync(MainDirectory)
+
+fs.watch(MainDirectory, () => {
+    fileNames = fs.readdirSync(MainDirectory)
+})
 const password = "UHOJS"
 const clientActions = ['RequestFile', 'RequestFileList', 'Quit', 'RequestFileStats', 'ShutdownServer']
 
@@ -75,7 +74,7 @@ tcpApp.on('connection', async (rSocket) => {
                 return socket.write(`SERVER\nUnknown File.`)
             }
 
-            const file = fs.readFileSync(FilePaths[argument])
+            const file = fs.readFileSync(path.join(MainDirectory, argument))
             socket.write(file)
         } else if (action === "Quit") {
             socket.end()
@@ -85,7 +84,7 @@ tcpApp.on('connection', async (rSocket) => {
             if (!argument || !fileNames.includes(argument)) {
                 return socket.write(`SERVER\nUnknown File.`)
             }
-            const fileStats = fs.statSync(FilePaths[argument]) 
+            const fileStats = fs.statSync(path.join(MainDirectory, argument))
             socket.write(`SERVER\nFile:${argument}\nFile Size:${fileStats.size} bytes`)     
         } else if (action === "ShutdownServer") {
             if (argument !== password) {
@@ -115,6 +114,9 @@ tcpApp.on('connection', async (rSocket) => {
 app.get('/', (req,res) => {
     res.send(`<h1>Current paths: /, /api, /api/requestfile, /api/requestfile, /api/requestfilestats, /api/requestfilelist</h1>`)
 })
+app.get('/health', (req,res) => {
+    res.json({"status":"operational", "acceptingConnections":acceptingConnections, "fileCount":fileNames.length})
+})
 app.get('/api', (req,res) => {
     res.json({
         "CurrentAPIs":['requestfile', 'requestfilestats', 'requestfilelist']
@@ -125,7 +127,7 @@ app.get('/api/requestfile/:filename', (req,res) => {
     if (!requestedFile || !fileNames.includes(requestedFile)) {
         return res.status(404).json({"error":"Unknown file."})
     }
-    res.sendFile(FilePaths[requestedFile])
+    res.sendFile(path.join(MainDirectory, requestedFile))
 })
 
 app.get('/api/requestfilestats/:filename', (req,res) => {
@@ -133,7 +135,7 @@ app.get('/api/requestfilestats/:filename', (req,res) => {
     if (!reqStatForFile || !fileNames.includes(reqStatForFile)) {
         return res.status(404).json({"error":"Unknown file."})
     }
-    const fileStats = fs.statSync(FilePaths[reqStatForFile])
+    const fileStats = fs.statSync(path.join(MainDirectory, reqStatForFile))
     res.json({"info":"success", "fileName":reqStatForFile, "fileSize":fileStats.size})
 })
 
@@ -168,7 +170,7 @@ app.ws('/', (ws,req) => {
                 return ws.send(`SERVER;Unknown File.`)
             }
 
-            const file = fs.readFileSync(FilePaths[argument])
+            const file = fs.readFileSync(path.join(MainDirectory, argument))
             ws.send(file)
         } else if (action === "Quit") {
             ws.close()
@@ -178,7 +180,7 @@ app.ws('/', (ws,req) => {
             if (!argument || !fileNames.includes(argument)) {
                 return ws.send(`SERVER;Unknown File.`)
             }
-            const fileStats = fs.statSync(FilePaths[argument]) 
+            const fileStats = fs.statSync(path.join(MainDirectory, argument))
             ws.send(`SERVER;File:${argument};File Size:${fileStats.size} bytes`)     
         } else if (action === "ShutdownServer") {
             if (argument !== password) {
