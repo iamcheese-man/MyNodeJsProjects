@@ -1,12 +1,13 @@
 const net = require('net')
 const express = require('express')
+const expressWS = require('express-ws')
 const FramedSocket = require('framed-socket')
 const cors = require('cors')
 const tcpApp = net.createServer()
 const app = express()
 const fs = require('fs')
 const bannedIPs = new Set()
-const clientSockets = new Set()
+const clientSockets = new Map()
 const FilePaths = {
     "BloodMoon.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\ApocalypseSTrack.mp3",
     "TribunalsTrialsAndExecutions.mp3":"C:\\Users\\YEP\\OneDrive\\Documents\\audio\\TribunalSTrack.mp3",
@@ -16,6 +17,7 @@ const fileNames = Object.keys(FilePaths)
 const password = "UHOJS"
 const clientActions = ['RequestFile', 'RequestFileList', 'Quit', 'RequestFileStats', 'ShutdownServer']
 
+expressWS(app)
 app.use(cors())
 app.use((req,res,next) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
@@ -40,7 +42,7 @@ tcpApp.on('connection', async (rSocket) => {
         return socket.end(`SERVER\nThe server isn't accepting anymore connections.`)
     }
     socket.write(`SERVER\nWelcome to FileArchive.\r\n\r\nAvailable Files: ${fileNames}`)
-    clientSockets.add(socket)
+    clientSockets.set(socket, "tcp")
     socket.on('message', async (bMsg) => {
         const msg = bMsg.toString().replaceAll('\\n', '\n').replaceAll('\\r', '\r')
         if (!msg.startsWith('CLIENT\n')) {
@@ -78,19 +80,10 @@ tcpApp.on('connection', async (rSocket) => {
                 return socket.write(`SERVER\nThe server is already shutting down.`)
             }
             shuttingDown = true;
-            for (const clientSocket of clientSockets) {
-                if (clientSocket !== socket) {
-                    clientSocket.write(`SERVER\nAll clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop transferring files.`)
-                } else {
-                    clientSocket.write(`SERVER\nSuccessfully initiated server shutdown.`)
-                }
-                
-            }
+            handleDiffClients(socket, "broadcastShutdown")
             await new Promise(resolve => setTimeout(resolve, 45000))
             acceptingConnections = false;
-            for (const clientSocket of clientSockets) {
-                clientSocket.end()
-            }
+            handleDiffClients(socket, "shutdown")
             await new Promise(resolve => setTimeout(resolve, 15000))
             process.exit(0)
         }
@@ -133,15 +126,102 @@ app.get('/api/requestfilelist', (req,res) => {
     res.json({"info":"success", "fileList":fileNames})
 })
 
+app.ws('/', (ws,req) => {
+    const IP = IPv6ToIPv4(req.socket.remoteAddress)
+    if (bannedIPs.has(IP)) {
+        return ws.close(`SERVER;You are banned.`)
+    }
+    if (acceptingConnections === false) {
+        return ws.end(`SERVER;The server isn't accepting anymore connections.`)
+    }
+    ws.send(`SERVER;Welcome to FileArchive;Available Files: ${fileNames}`)
+    clientSockets.set(ws, "ws")
+    ws.on('message', async (bMsg) => {
+        const msg = bMsg.toString()
+        if (!msg.startsWith('CLIENT;')) {
+            return ws.send(`SERVER;Invalid Message.`)
+        }
+        const action = msg.split(';')[1]
+        const argument = msg.split(';')[2]
+
+        if (!clientActions.includes(action)) {
+            return ws.send(`SERVER;Unknown Action.`)
+        }
+
+        if (action === "RequestFile") {
+            if (!argument || !fileNames.includes(argument)) {
+                return ws.send(`SERVER;Unknown File.`)
+            }
+
+            const file = fs.readFileSync(FilePaths[argument])
+            ws.send(file)
+        } else if (action === "Quit") {
+            ws.close()
+        } else if (action === "RequestFileList") {
+            ws.send(`SERVER;Current file list:${fileNames}`)
+        } else if (action === "RequestFileStats") {
+            if (!argument || !fileNames.includes(argument)) {
+                return ws.send(`SERVER;Unknown File.`)
+            }
+            const fileStats = fs.statSync(FilePaths[argument]) 
+            ws.send(`SERVER;File:${argument};File Size:${fileStats.size} bytes`)     
+        } else if (action === "ShutdownServer") {
+            if (argument !== password) {
+                return ws.send(`SERVER;Wrong password.`)
+            }
+            if (shuttingDown) {
+                return ws.send(`SERVER;The server is already shutting down.`)
+            }
+            shuttingDown = true;
+            handleDiffClients(ws, "broadcastShutdown")
+            await new Promise(resolve => setTimeout(resolve, 45000))
+            acceptingConnections = false;
+            handleDiffClients(ws, "shutdown")
+            await new Promise(resolve => setTimeout(resolve, 15000))
+            process.exit(0)
+        }
+    })
+    ws.on('error', (err) => {
+        console.log(`CLIENT ERRORED: ${err}`)
+    })
+    ws.on('close', (hadErr) => {
+        console.log(`CLIENT CLOSED: ${hadErr}`)
+        clientSockets.delete(ws)
+    })
+})
 app.listen(80, '0.0.0.0', () => {
     console.log('HTTP Server is running')
-})
+});
 tcpApp.listen(81, '0.0.0.0', () => {
     console.log('TCP Server is running')
-})
+});
 
 
 function IPv6ToIPv4(i) {
     const ip = i.toString()
     return ip.replace('::ffff:','').replace('::1','127.0.0.1').replace('::', '')
+}
+
+function handleDiffClients(socket, action) {
+    if (action === "shutdown") {
+        for (const [clientSocket, Sockettype] of clientSockets) {
+            if (Sockettype === "ws") {
+                clientSocket.close()
+            } else if (Sockettype === "tcp") {
+                clientSocket.end()
+            }
+        }        
+    } else if (action === "broadcastShutdown") {
+        for (const [clientSocket, Sockettype] of clientSockets) {
+            if (clientSocket !== socket && Sockettype === "ws") {
+                clientSocket.send(`SERVER;All clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop transferring files.`)
+            } else if (clientSocket === socket && Sockettype === "tcp") {
+                clientSocket.write(`SERVER\nSuccessfully initiated server shutdown.`)
+            } else if (clientSocket === socket && Sockettype === "ws") {
+                clientSocket.send(`SERVER;Successfully initiated server shutdown.`)
+            } else if (clientSocket !== socket && Sockettype === "tcp") {
+                clientSocket.write(`SERVER\nAll clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop transferring files.`)
+            }
+        }
+    }
 }
