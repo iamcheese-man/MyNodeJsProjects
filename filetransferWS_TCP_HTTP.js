@@ -18,7 +18,7 @@ fs.watch(MainDirectory, () => {
 })
 const password = "UHOJS"
 const clientActions = ['RequestFile', 'RequestFileList', 'Quit', 'RequestFileStats', 'ShutdownServer']
-
+const LogFile  = fs.createWriteStream('./logs.log', { flags:'a' })
 expressWS(app)
 app.use(cors())
 app.use((req,res,next) => {
@@ -44,6 +44,7 @@ tcpApp.on('connection', async (rSocket) => {
     
     log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE TCP SERVER`)
     if (bannedIPs.has(IP)) {
+        log(`[+] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO TCP SERVER`)
         return socket.end(`SERVER\nYou are banned.`)
     }
     if (acceptingConnections === false) {
@@ -66,6 +67,7 @@ tcpApp.on('connection', async (rSocket) => {
 
     socket.on('message', async (bMsg) => {
         const msg = bMsg.toString().replaceAll('\\n', '\n').replaceAll('\\r', '\r')
+        log(`[+] [${CalculateTime()}] CLIENT (TCP) HAS SENT: ${msg}.`)
         if (!msg.startsWith('CLIENT\n')) {
             return socket.write(`SERVER\nInvalid Message.`)
         }
@@ -154,6 +156,7 @@ app.ws('/', (ws,req) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
     log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE WS SERVER`)
     if (bannedIPs.has(IP)) {
+        log(`[+] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO WS SERVER.`)
         return ws.close(1008, `SERVER;You are banned.`)
     }
     if (acceptingConnections === false) {
@@ -163,6 +166,7 @@ app.ws('/', (ws,req) => {
     clientSockets.set(ws, "ws")
     ws.on('message', async (bMsg) => {
         const msg = bMsg.toString()
+        log(`[+] [${CalculateTime()}] CLIENT (WEBSOCKET) HAS SENT: ${msg}.`)
         if (!msg.startsWith('CLIENT;')) {
             return ws.send(`SERVER;Invalid Message.`)
         }
@@ -216,6 +220,11 @@ app.ws('/', (ws,req) => {
 })
 
 app.listen(80, '0.0.0.0', async () => {
+    log('\n')
+    log(`[----------------------------------------------------------------------------------------------------------------------]`) 
+    log(`[---------------------------------------------------]SERVER STARTUP[---------------------------------------------------]`)
+    log(`[----------------------------------------------------------------------------------------------------------------------]`)  
+    log('\n')
     log(`[+] [${CalculateTime()}] HTTP/WebSocket Server successfully started, running TCP server in 5 seconds...`)
     await new Promise(resolve => setTimeout(resolve, 5000))
     tcpApp.listen(81, '0.0.0.0', () => {
@@ -279,7 +288,7 @@ function log(message) {
         readline.cursorTo(process.stdout, 0)
     }
     console.log(message)
-
+    LogFile.write(`${message} \r\n`)
     if (CommandLineINT) {
         CommandLineINT.prompt(true)
     }
@@ -316,8 +325,12 @@ async function HandleCLI(input) {
         await new Promise(resolve => setTimeout(resolve, 15000))
         process.exit(0)
     } else if (action === "unban") {
-        bannedIPs.delete(arg)
-        log(`[CL Interface] [${CalculateTime()}]: Successfully unbanned IP ${arg}`)
+        if (!bannedIPs.has(arg)) {
+            log(`[CL Interface] [${CalculateTime()}]: This IP ${arg} is not banned.`)
+        } else {
+            bannedIPs.delete(arg)
+            log(`[CL Interface] [${CalculateTime()}]: Successfully unbanned IP ${arg}`)
+        }
     }
 
 }
