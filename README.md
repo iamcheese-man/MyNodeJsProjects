@@ -1,10 +1,6 @@
-### Rules
-Don't even mention AI.
+# notes
 
-
-### notes
-
-# My current skills
+### My current skills
 
 - making an HTTP server 
 - making a UDP server
