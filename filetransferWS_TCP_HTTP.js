@@ -44,7 +44,7 @@ tcpApp.on('connection', async (rSocket) => {
     
     log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE TCP SERVER`)
     if (bannedIPs.has(IP)) {
-        log(`[+] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO TCP SERVER`)
+        log(`[!] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO TCP SERVER`)
         return socket.end(`SERVER\nYou are banned.`)
     }
     if (acceptingConnections === false) {
@@ -67,7 +67,7 @@ tcpApp.on('connection', async (rSocket) => {
 
     socket.on('message', async (bMsg) => {
         const msg = bMsg.toString().replaceAll('\\n', '\n').replaceAll('\\r', '\r')
-        log(`[+] [${CalculateTime()}] CLIENT (TCP) HAS SENT: ${msg}.`)
+        log(`[i] [${CalculateTime()}] CLIENT (TCP) HAS SENT: ${msg}.`)
         if (!msg.startsWith('CLIENT\n')) {
             return socket.write(`SERVER\nInvalid Message.`)
         }
@@ -106,6 +106,7 @@ tcpApp.on('connection', async (rSocket) => {
             handleDiffClients(socket, "broadcastShutdown")
             await new Promise(resolve => setTimeout(resolve, 45000))
             acceptingConnections = false;
+            log(`[i] [${CalculateTime()}]: THE SERVER IS NO LONGER ACCEPTING CONNECTIONS`)
             handleDiffClients(socket, "KickAllClients")
             await new Promise(resolve => setTimeout(resolve, 15000))
             process.exit(0)
@@ -156,7 +157,7 @@ app.ws('/', (ws,req) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
     log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE WS SERVER`)
     if (bannedIPs.has(IP)) {
-        log(`[+] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO WS SERVER.`)
+        log(`[!] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO WS SERVER.`)
         return ws.close(1008, `SERVER;You are banned.`)
     }
     if (acceptingConnections === false) {
@@ -166,7 +167,7 @@ app.ws('/', (ws,req) => {
     clientSockets.set(ws, "ws")
     ws.on('message', async (bMsg) => {
         const msg = bMsg.toString()
-        log(`[+] [${CalculateTime()}] CLIENT (WEBSOCKET) HAS SENT: ${msg}.`)
+        log(`[i] [${CalculateTime()}] CLIENT (WEBSOCKET) HAS SENT: ${msg}.`)
         if (!msg.startsWith('CLIENT;')) {
             return ws.send(`SERVER;Invalid Message.`)
         }
@@ -205,6 +206,7 @@ app.ws('/', (ws,req) => {
             handleDiffClients(ws, "broadcastShutdown")
             await new Promise(resolve => setTimeout(resolve, 45000))
             acceptingConnections = false;
+            log(`[i] [${CalculateTime()}]: THE SERVER IS NO LONGER ACCEPTING CONNECTIONS`)
             handleDiffClients(ws, "KickAllClients")
             await new Promise(resolve => setTimeout(resolve, 15000))
             process.exit(0)
@@ -225,10 +227,10 @@ app.listen(80, '0.0.0.0', async () => {
     log(`[---------------------------------------------------]SERVER STARTUP[---------------------------------------------------]`)
     log(`[----------------------------------------------------------------------------------------------------------------------]`)  
     log('\n')
-    log(`[+] [${CalculateTime()}] HTTP/WebSocket Server successfully started, running TCP server in 5 seconds...`)
+    log(`[i] [${CalculateTime()}] HTTP/WebSocket Server successfully started, running TCP server in 5 seconds...`)
     await new Promise(resolve => setTimeout(resolve, 5000))
     tcpApp.listen(81, '0.0.0.0', () => {
-        log(`[+] [${CalculateTime()}] TCP Server successfully started. All systems operational.`)
+        log(`[i] [${CalculateTime()}] TCP Server successfully started. All systems operational.`)
     });
 });
 
@@ -295,13 +297,7 @@ function log(message) {
 }
 
 async function HandleCLI(input) {
-    const CLIActions = ['ban', 'shutdown', 'unban']
     const [action, arg] = input.split(' ')
-
-    if (!CLIActions.includes(action)) {
-        return log(`[CL Interface] [${CalculateTime()}]: Unknown command.`)
-    }
- 
     if (action === "ban") {
         const [IPINT1, IPINT2, IPINT3, IPINT4] = arg.split('.')
         
@@ -321,6 +317,7 @@ async function HandleCLI(input) {
         log(`[CL Interface] [${CalculateTime()}]: Successfully initiated shutdown.`)
         await new Promise(resolve => setTimeout(resolve, 45000))
         acceptingConnections = false;
+        log(`[i] [${CalculateTime()}]: THE SERVER IS NO LONGER ACCEPTING CONNECTIONS`)
         handleDiffClients(null, "KickAllClients")
         await new Promise(resolve => setTimeout(resolve, 15000))
         process.exit(0)
@@ -331,6 +328,49 @@ async function HandleCLI(input) {
             bannedIPs.delete(arg)
             log(`[CL Interface] [${CalculateTime()}]: Successfully unbanned IP ${arg}`)
         }
+    } else if (action === "kickall") {
+        if (clientSockets.size === 0) {
+            return log(`[CL Interface] [${CalculateTime()}]: No clients are currently connected.`)
+        }
+        handleDiffClients(null, "KickAllClients")
+    } else if (action === "ipkick") {
+        for (const [s, stype] of clientSockets) {
+            if (stype === "ws") {
+                if (IPv6ToIPv4(s._socket.remoteAddress) === arg) {
+                    s.close(1000, `SERVER;You have been kicked from the server.`)
+                }
+            } else if (stype === "tcp") {
+                if (IPv6ToIPv4(s.remoteAddress) === arg) {
+                    s.end(`SERVER\nYou have been kicked from the server.`)
+                }
+            }
+        }
+    } else if (action === "clients") {
+        log(`[CL Interface] [${CalculateTime()}]: Currently connected clients:`)
+        if (clientSockets.size === 0) {
+            return log(`          [!] None. `)
+        }
+        for (const [socket, socketType] of clientSockets) {
+            if (socketType === "ws") {
+                const ip = IPv6ToIPv4(socket._socket.remoteAddress)
+                log(`          [+] (WebSocket) ${ip} `)
+            } else if (socketType === "tcp") {
+                const ip = IPv6ToIPv4(socket.remoteAddress)
+                log(`          [+] (TCP) ${ip} `) 
+            }
+        }
+    } else if (action === "bannedusers") {
+        log(`[CL Interface] [${CalculateTime()}]: Currently banned clients:`)
+        if (bannedIPs.size === 0) {
+            return log(`          [!] None. `)
+        }
+        for (const IP of bannedIPs) {
+            log(`          [-] ${IP} `)
+        }        
+    } else if (action === "clientcount") {
+        log(`[CL Interface] [${CalculateTime()}]: Number of connected clients: ${clientSockets.size}`)
+    } else {
+        return log(`[CL Interface] [${CalculateTime()}]: Unknown command.`)
     }
 
 }
