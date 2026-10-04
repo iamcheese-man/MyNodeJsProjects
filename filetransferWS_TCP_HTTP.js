@@ -4,6 +4,7 @@ const expressWS = require('express-ws')
 const FramedSocket = require('framed-socket')
 const path = require('path')
 const cors = require('cors')
+const readline = require('readline')
 const tcpApp = net.createServer()
 const app = express()
 const fs = require('fs')
@@ -11,7 +12,7 @@ const bannedIPs = new Set()
 const clientSockets = new Map()
 const MainDirectory = 'C:\\Users\\YEP\\OneDrive\\Documents\\audio'
 let fileNames = fs.readdirSync(MainDirectory)
-
+let CommandLineINT;
 fs.watch(MainDirectory, () => {
     fileNames = fs.readdirSync(MainDirectory)
 })
@@ -22,10 +23,16 @@ expressWS(app)
 app.use(cors())
 app.use((req,res,next) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
-    console.log(`HTTP CLIENT HAS REQUESTED: ${req.method} ${req.path} FROM IP ${IP} `)
+    log(`[+] [${CalculateTime()}] HTTP CLIENT HAS REQUESTED: ${req.method} ${req.path} FROM IP ${IP} `)
+    res.on('finish', () => {
+        log(`    [+] RESPONSE CODE: ${res.statusCode}`)
+        log(`    [+] RESPONSE HEADERS: ${JSON.stringify(res.getHeaders())}`)
+    })
     if (acceptingConnections === false) {
         return res.status(403).json({"error":"The server isn't accepting connections right now."})
-    } 
+    } else if (bannedIPs.has(IP)) {
+        return res.status(403).json({"error":"You are banned."})
+    }
     next()
 })
 let acceptingConnections = true;
@@ -35,7 +42,7 @@ tcpApp.on('connection', async (rSocket) => {
     const socket = new FramedSocket(rSocket)
     const IP = IPv6ToIPv4(socket.remoteAddress)
     
-    console.log(`Client ${IP} has connected`)
+    log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE TCP SERVER`)
     if (bannedIPs.has(IP)) {
         return socket.end(`SERVER\nYou are banned.`)
     }
@@ -97,16 +104,16 @@ tcpApp.on('connection', async (rSocket) => {
             handleDiffClients(socket, "broadcastShutdown")
             await new Promise(resolve => setTimeout(resolve, 45000))
             acceptingConnections = false;
-            handleDiffClients(socket, "shutdown")
+            handleDiffClients(socket, "KickAllClients")
             await new Promise(resolve => setTimeout(resolve, 15000))
             process.exit(0)
         }
     })
     socket.on('error', (err) => {
-        console.log(`CLIENT ERRORED: ${err}`)
+        log(`[!] [${CalculateTime()}] CLIENT ${IP} ERRORED: ${err}`)
     })
     socket.on('close', (hadErr) => {
-        console.log(`CLIENT CLOSED: ${hadErr}`)
+        log(`[-] [${CalculateTime()}] CLIENT ${IP} HAS DISCONNECTED FROM THE SERVER. HAD ERROR: ${hadErr}`)
         clientSockets.delete(socket)
     })
 })
@@ -145,6 +152,7 @@ app.get('/api/requestfilelist', (req,res) => {
 
 app.ws('/', (ws,req) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
+    log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE WS SERVER`)
     if (bannedIPs.has(IP)) {
         return ws.close(1008, `SERVER;You are banned.`)
     }
@@ -193,24 +201,25 @@ app.ws('/', (ws,req) => {
             handleDiffClients(ws, "broadcastShutdown")
             await new Promise(resolve => setTimeout(resolve, 45000))
             acceptingConnections = false;
-            handleDiffClients(ws, "shutdown")
+            handleDiffClients(ws, "KickAllClients")
             await new Promise(resolve => setTimeout(resolve, 15000))
             process.exit(0)
         }
     })
     ws.on('error', (err) => {
-        console.log(`CLIENT ERRORED: ${err}`)
+        log(`[!] [${CalculateTime()}] CLIENT ${IP} ERRORED: ${err}`)
     })
-    ws.on('close', (hadErr) => {
-        console.log(`CLIENT CLOSED: ${hadErr}`)
+    ws.on('close', (code) => {
+        log(`[-] [${CalculateTime()}] CLIENT ${IP} HAS DISCONNECTED FROM THE SERVER. CLOSE CODE: ${code}`)
         clientSockets.delete(ws)
     })
 })
 
-app.listen(80, '0.0.0.0', () => {
-    console.log('HTTP/WebSocket Server successfully started, running TCP server...')
+app.listen(80, '0.0.0.0', async () => {
+    log(`[+] [${CalculateTime()}] HTTP/WebSocket Server successfully started, running TCP server in 5 seconds...`)
+    await new Promise(resolve => setTimeout(resolve, 5000))
     tcpApp.listen(81, '0.0.0.0', () => {
-        console.log('TCP Server successfully started. All systems operational.')
+        log(`[+] [${CalculateTime()}] TCP Server successfully started. All systems operational.`)
     });
 });
 
@@ -221,7 +230,7 @@ function IPv6ToIPv4(i) {
 }
 
 function handleDiffClients(socket, action) {
-    if (action === "shutdown") {
+    if (action === "KickAllClients") {
         for (const [clientSocket, Sockettype] of clientSockets) {
             if (Sockettype === "ws") {
                 clientSocket.close(1001)
@@ -241,5 +250,87 @@ function handleDiffClients(socket, action) {
                 clientSocket.write(`SERVER\nAll clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop requesting files.`)
             }
         }
+    } else if (action === "SystemBroadcastShutdown") {
+        for (const [clientSocket, Sockettype] of clientSockets) {
+            if (Sockettype === "ws") {
+                clientSocket.send(`SERVER;All clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop requesting files. (initiated by the System)`)
+            } else if (Sockettype === "tcp") {
+                clientSocket.write(`SERVER\nAll clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop requesting files. (initiated by the System)`)
+            }
+        }        
     }
 }
+
+function CalculateTime() {
+    const current = new Date()
+    const year = current.getUTCFullYear()
+    const month = current.getUTCMonth() + 1
+    const day = current.getUTCDate()
+
+    const time = `${current.getUTCHours()}:${current.getUTCMinutes()}:${current.getUTCSeconds()}`
+    const timeStamp = `${year}/${month}/${day} - ${time}`
+
+    return timeStamp
+}
+
+function log(message) {
+    if (CommandLineINT) {
+        readline.clearLine(process.stdout, 0)
+        readline.cursorTo(process.stdout, 0)
+    }
+    console.log(message)
+
+    if (CommandLineINT) {
+        CommandLineINT.prompt(true)
+    }
+}
+
+async function HandleCLI(input) {
+    const CLIActions = ['ban', 'shutdown', 'unban']
+    const [action, arg] = input.split(' ')
+
+    if (!CLIActions.includes(action)) {
+        return log(`[CL Interface] [${CalculateTime()}]: Unknown command.`)
+    }
+ 
+    if (action === "ban") {
+        const [IPINT1, IPINT2, IPINT3, IPINT4] = arg.split('.')
+        
+        if (!arg || arg === "" || !IPINT1 || !IPINT2 || !IPINT3 || !IPINT4 || Number(IPINT1) > 255 || Number(IPINT2) > 255 || Number(IPINT3) > 255 || Number(IPINT4) > 255) {
+            return log(`[CL Interface] [${CalculateTime()}]: Invalid argument '${arg}'. Must be a valid IPv4 address.`)
+        }
+        bannedIPs.add(arg)
+        log(`[CL Interface] [${CalculateTime()}]: Successfully banned IP ${arg}`)
+    } else if (action === "shutdown") {
+        if (shuttingDown) {
+            return log(`[CL Interface] [${CalculateTime()}]: The server is already shutting down.`)
+        }
+        
+        shuttingDown = true;
+        handleDiffClients(null, "SystemBroadcastShutdown")
+
+        log(`[CL Interface] [${CalculateTime()}]: Successfully initiated shutdown.`)
+        await new Promise(resolve => setTimeout(resolve, 45000))
+        acceptingConnections = false;
+        handleDiffClients(null, "KickAllClients")
+        await new Promise(resolve => setTimeout(resolve, 15000))
+        process.exit(0)
+    } else if (action === "unban") {
+        bannedIPs.delete(arg)
+        log(`[CL Interface] [${CalculateTime()}]: Successfully unbanned IP ${arg}`)
+    }
+
+}
+
+CommandLineINT = readline.createInterface({
+    input:process.stdin,
+    output:process.stdout,
+    prompt:'ROOT > '
+})
+
+CommandLineINT.prompt()
+
+CommandLineINT.on('line', async (input) => {
+    await HandleCLI(input)
+    CommandLineINT.prompt()
+}) 
