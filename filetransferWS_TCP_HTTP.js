@@ -42,11 +42,12 @@ tcpApp.on('connection', async (rSocket) => {
     const socket = new FramedSocket(rSocket)
     const IP = IPv6ToIPv4(socket.remoteAddress)
     
-    log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE TCP SERVER`)
+    
     if (bannedIPs.has(IP)) {
         log(`[!] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO TCP SERVER`)
         return socket.end(`SERVER\nYou are banned.`)
     }
+    log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE TCP SERVER`)
     if (acceptingConnections === false) {
         return socket.end(`SERVER\nThe server isn't accepting anymore connections.`)
     }
@@ -103,11 +104,11 @@ tcpApp.on('connection', async (rSocket) => {
                 return socket.write(`SERVER\nThe server is already shutting down.`)
             }
             shuttingDown = true;
-            handleDiffClients(socket, "broadcastShutdown")
+            handleDiffClients(socket, "broadcastShutdown", null)
             await new Promise(resolve => setTimeout(resolve, 45000))
             acceptingConnections = false;
             log(`[i] [${CalculateTime()}]: THE SERVER IS NO LONGER ACCEPTING CONNECTIONS`)
-            handleDiffClients(socket, "KickAllClients")
+            handleDiffClients(socket, "KickAllClients", null)
             await new Promise(resolve => setTimeout(resolve, 15000))
             process.exit(0)
         }
@@ -155,11 +156,12 @@ app.get('/api/requestfilelist', (req,res) => {
 
 app.ws('/', (ws,req) => {
     const IP = IPv6ToIPv4(req.socket.remoteAddress)
-    log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE WS SERVER`)
+    
     if (bannedIPs.has(IP)) {
         log(`[!] [${CalculateTime()}] BANNED CLIENT ${IP} HAS TRIED TO CONNECT TO WS SERVER.`)
         return ws.close(1008, `SERVER;You are banned.`)
     }
+    log(`[+] [${CalculateTime()}] CLIENT ${IP} HAS CONNECTED TO THE WS SERVER`)
     if (acceptingConnections === false) {
         return ws.close(1013, `SERVER;The server isn't accepting anymore connections.`)
     }
@@ -203,7 +205,7 @@ app.ws('/', (ws,req) => {
                 return ws.send(`SERVER;The server is already shutting down.`)
             }
             shuttingDown = true;
-            handleDiffClients(ws, "broadcastShutdown")
+            handleDiffClients(ws, "broadcastShutdown", null)
             await new Promise(resolve => setTimeout(resolve, 45000))
             acceptingConnections = false;
             log(`[i] [${CalculateTime()}]: THE SERVER IS NO LONGER ACCEPTING CONNECTIONS`)
@@ -240,7 +242,7 @@ function IPv6ToIPv4(i) {
     return ip.replace('::ffff:','').replace('::1','127.0.0.1').replace('::', '')
 }
 
-function handleDiffClients(socket, action) {
+function handleDiffClients(socket, action, tcpM, wsM) {
     if (action === "KickAllClients") {
         for (const [clientSocket, Sockettype] of clientSockets) {
             if (Sockettype === "ws") {
@@ -267,6 +269,18 @@ function handleDiffClients(socket, action) {
                 clientSocket.send(`SERVER;All clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop requesting files. (initiated by the System)`)
             } else if (Sockettype === "tcp") {
                 clientSocket.write(`SERVER\nAll clients will be disconnected in 45 seconds and the server is shutting down in 1 minute. Please stop requesting files. (initiated by the System)`)
+            }
+        }        
+    } else if (action === "SystemBroadcastMessageTCP") {
+        for (const [clientSocket, Sockettype] of clientSockets) {
+            if (Sockettype === "tcp") {
+                clientSocket.send(tcpM)
+            }
+        }        
+    } else if (action === "SystemBroadcastMessageWS") {
+        for (const [clientSocket, Sockettype] of clientSockets) {
+            if (Sockettype === "ws") {
+                clientSocket.send(wsM)
             }
         }        
     }
@@ -297,7 +311,8 @@ function log(message) {
 }
 
 async function HandleCLI(input) {
-    const [action, arg] = input.split(' ')
+    const [action, ...rest] = input.split(' ')
+    const arg = rest.join(' ')
     if (action === "ban") {
         const [IPINT1, IPINT2, IPINT3, IPINT4] = arg.split('.')
         
@@ -312,13 +327,13 @@ async function HandleCLI(input) {
         }
         
         shuttingDown = true;
-        handleDiffClients(null, "SystemBroadcastShutdown")
+        handleDiffClients(null, "SystemBroadcastShutdown", null)
 
         log(`[CL Interface] [${CalculateTime()}]: Successfully initiated shutdown.`)
         await new Promise(resolve => setTimeout(resolve, 45000))
         acceptingConnections = false;
         log(`[i] [${CalculateTime()}]: THE SERVER IS NO LONGER ACCEPTING CONNECTIONS`)
-        handleDiffClients(null, "KickAllClients")
+        handleDiffClients(null, "KickAllClients", null)
         await new Promise(resolve => setTimeout(resolve, 15000))
         process.exit(0)
     } else if (action === "unban") {
@@ -332,7 +347,7 @@ async function HandleCLI(input) {
         if (clientSockets.size === 0) {
             return log(`[CL Interface] [${CalculateTime()}]: No clients are currently connected.`)
         }
-        handleDiffClients(null, "KickAllClients")
+        handleDiffClients(null, "KickAllClients", null)
     } else if (action === "ipkick") {
         for (const [s, stype] of clientSockets) {
             if (stype === "ws") {
@@ -369,6 +384,23 @@ async function HandleCLI(input) {
         }        
     } else if (action === "clientcount") {
         log(`[CL Interface] [${CalculateTime()}]: Number of connected clients: ${clientSockets.size}`)
+    } else if (action === "broadcasttcp") {
+        if (arg === '' || arg = ' ') {
+            return log(`[CL Interface] [${CalculateTime()}]: Empty message.`)
+        }
+        if (clientSockets.size === 0) {
+            return log(`[CL Interface] [${CalculateTime()}]: No clients are connected.`)
+        }
+        handleDiffClients(null, "SystemBroadcastMessageTCP", arg, null)
+    } else if (action === "broadcastws") {
+        if (arg === '' || arg = ' ') {
+            return log(`[CL Interface] [${CalculateTime()}]: Empty message.`)
+        }
+        if (clientSockets.size === 0) {
+            return log(`[CL Interface] [${CalculateTime()}]: No clients are connected.`)
+        }
+        handleDiffClients(null, "SystemBroadcastMessageWS", null, arg)
+        log(`[CL Interface] [${CalculateTime()}]: Broadcasted the message to WebSocket clients.`) 
     } else {
         return log(`[CL Interface] [${CalculateTime()}]: Unknown command.`)
     }
