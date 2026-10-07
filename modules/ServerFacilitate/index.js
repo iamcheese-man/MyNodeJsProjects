@@ -1,6 +1,15 @@
 // CONVENIANCE MODULE
 // made by iamcheese-man on gittyhub
 
+function GetSocketType(socket) {
+    if (!socket) {
+        throw new Error('UNSPECIFIED/INVALID PARAMETERS: socket?: REQUIRED parameter')
+    }
+    if (typeof socket.write === "function" && typeof socket.end === "function") {return "TCP"}
+    if (typeof socket.send === "function" && typeof socket.close === "function") {return "WS"}   
+    throw new Error('UNKNOWN REALTIME SOCKET FUNCTIONS')
+}
+
 function GetIPFromSocket(socket, type) {
     if (!socket || !['WebSocket', 'TCP'].includes(type) || !type) {
         throw new Error('UNSPECIFIED/INVALID PARAMETERS: socket?: REQUIRED parameter, type?: REQUIRED string')
