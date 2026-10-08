@@ -10,4 +10,6 @@
 - making an HTML/JS/CSS client (web browser)
 - knowing how to make a CLI interface with `readline`
 - mitigating against a basic DOS attack
+- making modules
+  
   
