@@ -13,7 +13,7 @@ class DataBase {
 
     set(key, value) {
         const file = path.join(this.directory, 'DataBase.db')
-        if (!key || !value) {
+        if (key === undefined || value === undefined || key === null || value === null) {
             throw new Error(`DATABASE; Invalid set() parameters. key && value`)
         }
         if (!existsSync(file)) {
@@ -28,7 +28,7 @@ class DataBase {
         
     }
     get(key) {
-        if (!key) {
+        if (key === undefined || key === null) {
             throw new Error('DATABASE; Invalid get() parameters. key:REQUIRED')
         }
 
@@ -51,7 +51,7 @@ class DataBase {
         return undefined
     }
     delete(key) {
-        if (!key) {
+        if (key === undefined || key === null)  {
             throw new Error(`DATABASE; Invalid delete() parameters. key:REQUIRED`)
         }
         const file = path.join(this.directory, 'DataBase.db')
