@@ -17,9 +17,9 @@ class DataBase {
             throw new Error(`DATABASE; Invalid set() parameters. key && value`)
         }
         if (!existsSync(file)) {
-            writeFileSync(file,`DBKEY:${key};:DB:;DBVALUE:${value}\n`)
+            writeFileSync(file,`DBKEY:${key};:DL:DB:DL:;DBVALUE:${value}\n`)
         } else {
-            appendFileSync(file,`DBKEY:${key};:DB:;DBVALUE:${value}\n`)
+            appendFileSync(file,`DBKEY:${key};:DL:DB:DL:;DBVALUE:${value}\n`)
         }
         
         
@@ -36,7 +36,7 @@ class DataBase {
         for (const entry of entries) {
             if (!entry) continue
 
-            let [k, v] = entry.split(';:DB:;')
+            let [k, v] = entry.split(';:DL:DB:DL:;')
             k = k.replace('DBKEY:', '')
             v = v.replace('DBVALUE:', '')
 
@@ -58,7 +58,7 @@ class DataBase {
         for (const entry of entries) {
             if (!entry) continue
 
-            const [k, v] = entry.split(';:DB:;')
+            const [k, v] = entry.split(';:DL:DB:DL:;')
             const Sk = k.replace('DBKEY:', '')
             const Sv = v.replace('DBVALUE:', '')
             
