@@ -1,3 +1,6 @@
+// DataBase module
+// made by iamcheese-man on gittyhub
+
 const {writeFile, writeFileSync, unlink, unlinkSync, appendFile, appendFileSync, exists, existsSync, readFile, readFileSync} = require('fs')
 const path = require('path')
 class DataBase {
