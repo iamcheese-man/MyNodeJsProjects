@@ -19,6 +19,9 @@ class DataBase {
         if (!existsSync(file)) {
             writeFileSync(file,`DBKEY:${key};:DL:DB:DL:;DBVALUE:${value}\n`)
         } else {
+            if (this.get(key) !== undefined) {
+                this.delete(key)
+            }
             appendFileSync(file,`DBKEY:${key};:DL:DB:DL:;DBVALUE:${value}\n`)
         }
         
