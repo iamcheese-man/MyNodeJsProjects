@@ -2,7 +2,7 @@ const expressws = require('express-ws')
 const express = require('express')
 const readline = require('readline')
 
-const clients = new Map() // socket, {user, room id}
+const clients = new Map() // socket, {id, room id}
 const bannedIPs = new Map() // ip, reason
 const app = express()
 expressws(app)
@@ -17,7 +17,7 @@ class User {
     join() {
         if (!IsSocketConnected(this.socket)) return
         clients.set(this.socket,{name:this.name, roomId: this.roomId})
-        for (const [client, {name, roomId}] of clients) {
+        for (const [client, {id, roomId}] of clients) {
             if (client !== this.socket && roomId === this.roomId) {
                 client.send(`(S) ${this.name} HAS JOINED THE CHAT`)
             } else if (client === this.socket && roomId === this.roomId) {
@@ -78,6 +78,12 @@ app.ws('/live/chat{/:id}', (ws,req) => {
         const reason = bannedIPs.get(IP)
         return ws.close(1008, `(S) You are banned for reason: ${reason}`)
     }
+    if (!uname) {
+        return ws.close(1008, `(S) Query 'name' not provided`)
+    }
+    if (!IsValidatedName(uname)) {
+        return ws.close(1008, `(S) Invalid name`) 
+    }
     log(`A client (${IP}) has connected to server`)
     const requestedRoomID = Number.isInteger(Number(req.params.id)) ? Number(req.params.id) <= 15 ? Number(req.params.id) >= 0 ? Number(req.params.id) : 1 : 1 : 1
 
@@ -91,7 +97,7 @@ app.ws('/live/chat{/:id}', (ws,req) => {
     })
     ws.on('close', () => {
         user.leave()
-    })
+    });
 
 })
 
@@ -136,3 +142,16 @@ cmdlineInt.on('line', (input) => {
     }
     cmdlineInt.prompt()
 })
+
+function IsValidatedName(n) {
+    const dc = ['-','!','*','\\','\r','\n',',','&',';','.',':','/','(',')',' ','    ']
+    if (n.length < 3 || n.length > 20) {
+        return false
+    }
+    for (const char of dc) {
+        if (n.includes(char)) {
+            return false
+        }
+    }
+    return true
+}
