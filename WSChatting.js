@@ -2,7 +2,7 @@ const expressws = require('express-ws')
 const express = require('express')
 const readline = require('readline')
 
-const clients = new Map() // socket, {id, room id}
+const clients = new Map() // socket, {user, room id}
 const bannedIPs = new Map() // ip, reason
 const app = express()
 expressws(app)
