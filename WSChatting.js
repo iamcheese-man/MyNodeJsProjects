@@ -17,7 +17,7 @@ class User {
     join() {
         if (!IsSocketConnected(this.socket)) return
         clients.set(this.socket,{name:this.name, roomId: this.roomId})
-        for (const [client, {id, roomId}] of clients) {
+        for (const [client, {name, roomId}] of clients) {
             if (client !== this.socket && roomId === this.roomId) {
                 client.send(`(S) ${this.name} HAS JOINED THE CHAT`)
             } else if (client === this.socket && roomId === this.roomId) {
@@ -33,7 +33,7 @@ class User {
         if (clients.has(this.socket)) {
             clients.delete(this.socket)
         }
-        for (const [client, {name, roomId}]of clients) {
+        for (const [client, {name, roomId}] of clients) {
             if (client !== this.socket && roomId === this.roomId && IsSocketConnected(client)) {
                 client.send(`(S) ${this.name} HAS LEFT THE CHAT`)
             }
